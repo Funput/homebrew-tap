@@ -12,11 +12,11 @@ brew install funput
 ```
 
 Works on both **macOS** and **Linux** (Linuxbrew). `brew install funput` uses a
-prebuilt **bottle** when one exists for your platform — macOS arm64/x86_64 or
-`x86_64_linux` (instant, no compiler). Otherwise Homebrew falls back to building from
-source — that is what `depends_on "rust" => :build` in the formula is for — so the
-tap works even before bottle CI has covered every platform (e.g. arm64 Linux, which
-has no bottle yet and builds from source).
+prebuilt **bottle** when one exists for your platform — macOS **arm64** or
+**`x86_64_linux`** (instant, no compiler). Otherwise Homebrew falls back to building
+from source — that is what `depends_on "rust" => :build` in the formula is for — so
+the tap works everywhere, including platforms with no free CI runner to bottle on:
+**Intel macOS** and **arm64 Linux** build from source.
 
 The single `funput` binary is the umbrella command:
 
@@ -34,8 +34,7 @@ The single `funput` binary is the umbrella command:
      `contents: write` on `Funput/homebrew-tap`.
 2. [`bottle.yml`](.github/workflows/bottle.yml) here then:
    - bumps `url` + `sha256` in [`Formula/funput.rb`](Formula/funput.rb) to the new tag,
-   - builds bottles on `macos-14` (arm64), `macos-13` (x86_64), and `ubuntu-latest`
-     (`x86_64_linux`),
+   - builds bottles on `macos-14` (arm64) and `ubuntu-latest` (`x86_64_linux`),
    - uploads the bottle tarballs to a `funput-<version>` GitHub Release on this repo,
    - merges the per-platform checksums into the formula's `bottle do` block and commits.
 

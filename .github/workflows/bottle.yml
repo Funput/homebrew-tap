@@ -71,11 +71,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple Silicon (arm64); macos-13 = Intel (x86_64);
-        # ubuntu-latest = x86_64_linux (Linuxbrew bottle).
-        os: [macos-14, macos-13, ubuntu-latest]
+        # macos-14 = Apple Silicon (arm64, oldest arm64 image → its bottle also
+        # pours on newer macOS); ubuntu-latest = x86_64_linux. Intel macOS and
+        # arm64 Linux have no free runner and fall back to build-from-source.
+        os: [macos-14, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # macOS runners ship Homebrew on PATH; Linux runners do not, so install it.
+      - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap this repository
         run: |
           set -euo pipefail
@@ -119,6 +122,7 @@ jobs:
         with:
           pattern: bottle-json-*
           merge-multiple: true
+      - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap + merge bottle blocks
         run: |
           set -euo pipefail
