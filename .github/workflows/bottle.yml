@@ -1,0 +1,138 @@
+name: Build bottles
+
+# Triggered by the main repo's release workflow (repository_dispatch `release`)
+# or manually. Builds the `funput` formula for macOS arm64 + x86_64, uploads the
+# bottle tarballs to a GitHub Release on this tap, and commits the merged
+# `bottle do` block back into Formula/funput.rb.
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to bottle, e.g. 1.2026.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bottle-${{ github.event.client_payload.version || inputs.version }}
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.event.client_payload.version || inputs.version }}
+  FORMULA: funput
+
+jobs:
+  # ---- Point the formula at the new upstream tarball ------------------------
+  bump:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bump url + sha256 to v${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/Funput/Funput/archive/refs/tags/v${VERSION}.tar.gz"
+          sha=$(curl -fsSL "$url" | shasum -a 256 | cut -d' ' -f1)
+          root="https://github.com/Funput/homebrew-tap/releases/download/${FORMULA}-${VERSION}"
+          f="Formula/${FORMULA}.rb"
+          # Replace the url, its following sha256, and the bottle root_url.
+          perl -0pi -e "s|url \"https://github.com/Funput/Funput/archive/refs/tags/v[^\"]*\"|url \"$url\"|" "$f"
+          perl -0pi -e "s|(url \"[^\"]*\"\n  sha256 )\"[0-9a-f]{64}\"|\${1}\"$sha\"|" "$f"
+          perl -0pi -e "s|root_url \"[^\"]*\"|root_url \"$root\"|" "$f"
+          echo "Bumped $f to v${VERSION} (sha256 $sha)"
+      - id: tag
+        run: echo "tag=${FORMULA}-${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Commit the version bump
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "funput ${VERSION}: bump to upstream release" || echo "no changes"
+          git push
+      # Create (or reuse) the Release that will host the bottle assets.
+      - name: Ensure bottle Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "${FORMULA}-${VERSION}" >/dev/null 2>&1 || \
+            gh release create "${FORMULA}-${VERSION}" \
+              --title "funput ${VERSION} bottles" \
+              --notes "Homebrew bottles for funput ${VERSION}."
+
+  # ---- Build a bottle per arch ----------------------------------------------
+  build:
+    needs: bump
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 = Apple Silicon (arm64); macos-13 = Intel (x86_64);
+        # ubuntu-latest = x86_64_linux (Linuxbrew bottle).
+        os: [macos-14, macos-13, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Tap this repository
+        run: |
+          set -euo pipefail
+          brew update
+          brew tap Funput/tap "https://github.com/${{ github.repository }}"
+          # Make sure we build the just-bumped formula.
+          brew update-reset "$(brew --repository Funput/tap)"
+
+      - name: Build bottle
+        run: |
+          set -euo pipefail
+          brew install --build-bottle "Funput/tap/${FORMULA}"
+          brew bottle --json --no-rebuild \
+            --root-url "https://github.com/Funput/homebrew-tap/releases/download/${FORMULA}-${VERSION}" \
+            "Funput/tap/${FORMULA}"
+          # `brew bottle` writes files like funput--<ver>.<tag>.bottle.tar.gz next to CWD.
+          ls -1 *.bottle.*
+
+      - name: Upload bottle tarball to the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${FORMULA}-${VERSION}" *.bottle.tar.gz --clobber --repo "${{ github.repository }}"
+
+      - name: Stash the bottle JSON for the merge step
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-json-${{ matrix.os }}
+          path: "*.bottle.json"
+
+  # ---- Merge the per-arch checksums into the formula ------------------------
+  merge:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bottle-json-*
+          merge-multiple: true
+      - name: Tap + merge bottle blocks
+        run: |
+          set -euo pipefail
+          brew update
+          brew tap Funput/tap "https://github.com/${{ github.repository }}"
+          brew update-reset "$(brew --repository Funput/tap)"
+          # Fold every arch's sha256 into the formula's `bottle do` block.
+          brew bottle --merge --write --no-commit *.bottle.json
+      - name: Commit merged bottle block
+        run: |
+          set -euo pipefail
+          f="$(brew --repository Funput/tap)/Formula/${FORMULA}.rb"
+          cp "$f" "Formula/${FORMULA}.rb"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "funput ${VERSION}: add bottles" || echo "no changes"
+          git push
