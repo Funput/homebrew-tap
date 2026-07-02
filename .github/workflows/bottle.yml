@@ -101,19 +101,18 @@ jobs:
           mv ./*.bottle.tar.gz ./*.bottle.json dist/
           echo "Produced:"; ls -l dist
 
-      - name: Upload bottle tarball to the Release
+      # Upload BOTH the bottle tarball and its JSON to the Release. The merge job
+      # then fetches the JSONs with `gh release download` — far more reliable here
+      # than cross-job `actions/upload/download-artifact`, which silently produced
+      # empty/absent downloads in this workflow.
+      - name: Upload bottle tarball + JSON to the Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "${FORMULA}-${VERSION}" dist/*.bottle.tar.gz --clobber --repo "${{ github.repository }}"
-
-      - name: Stash the bottle JSON for the merge step
-        uses: actions/upload-artifact@v5
-        with:
-          name: bottle-json-${{ matrix.os }}
-          path: dist/*.bottle.json
-          if-no-files-found: error
+          gh release upload "${FORMULA}-${VERSION}" \
+            dist/*.bottle.tar.gz dist/*.bottle.json \
+            --clobber --repo "${{ github.repository }}"
 
   # ---- Merge the per-arch checksums into the formula ------------------------
   merge:
@@ -123,27 +122,24 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: main
-      # Download each build's artifact by its exact name (the matrix is fixed, so
-      # the names are deterministic). `pattern`-based download proved unreliable —
-      # it silently matched nothing. Both extract into bottles/; their JSONs carry
-      # distinct bottle-tag names, so there is no collision.
-      - uses: actions/download-artifact@v5
-        with:
-          name: bottle-json-macos-14
-          path: bottles
-      - uses: actions/download-artifact@v5
-        with:
-          name: bottle-json-ubuntu-latest
-          path: bottles
       - uses: Homebrew/actions/setup-homebrew@master
+      # Fetch every platform's bottle JSON straight from the Release the build jobs
+      # uploaded them to — no cross-job artifact passing involved.
+      - name: Download bottle JSONs from the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p bottles
+          gh release download "${FORMULA}-${VERSION}" \
+            --pattern '*.bottle.json' --dir bottles --repo "${{ github.repository }}"
+          echo "Downloaded:"; ls -l bottles
       - name: Tap + merge bottle blocks
         run: |
           set -euo pipefail
-          echo "Artifact tree:"; find bottles | sort || true
           jsons=$(find bottles -name '*.bottle.json' | sort)
           if [ -z "$jsons" ]; then
-            echo "::error::No .bottle.json found under bottles/ despite the build uploads." \
-                 "See the artifact tree above."
+            echo "::error::No .bottle.json downloaded from the ${FORMULA}-${VERSION} release."
             exit 1
           fi
           echo "Merging:"; echo "$jsons"
