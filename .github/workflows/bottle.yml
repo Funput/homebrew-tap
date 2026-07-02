@@ -94,11 +94,18 @@ jobs:
           brew bottle --json --no-rebuild \
             --root-url "https://github.com/Funput/homebrew-tap/releases/download/${FORMULA}-${VERSION}" \
             "Funput/tap/${FORMULA}"
-          # `brew bottle` writes funput--<ver>.<tag>.bottle.tar.gz + .bottle.json into
-          # CWD. Collect both into dist/ — the `mv` fails the job (set -e) if either
-          # is missing, surfacing the problem here instead of an empty artifact.
+          # `brew bottle` writes a LOCAL file with a double dash
+          # (funput--<ver>.<tag>.bottle.tar.gz), but the bottle JSON's "filename" —
+          # the name Homebrew builds the download URL from — uses a SINGLE dash.
+          # Upload under the single-dash name so `brew install` can pour it; the raw
+          # double-dash name 404s. Collapse the first `--` → `-` on the tarball.
+          # The `mv` fails the job (set -e) if brew produced no bottle, surfacing it here.
           mkdir -p dist
-          mv ./*.bottle.tar.gz ./*.bottle.json dist/
+          for f in ./*.bottle.tar.gz; do
+            base=$(basename "$f")
+            mv "$f" "dist/${base/--/-}"
+          done
+          mv ./*.bottle.json dist/
           echo "Produced:"; ls -l dist
 
       # Upload BOTH the bottle tarball and its JSON to the Release. The merge job
