@@ -119,9 +119,6 @@ jobs:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: main
       - uses: Homebrew/actions/setup-homebrew@master
       # Fetch every platform's bottle JSON straight from the Release the build jobs
       # uploaded them to — no cross-job artifact passing involved.
@@ -134,10 +131,14 @@ jobs:
           gh release download "${FORMULA}-${VERSION}" \
             --pattern '*.bottle.json' --dir bottles --repo "${{ github.repository }}"
           echo "Downloaded:"; ls -l bottles
-      - name: Tap + merge bottle blocks
+      # Merge the sha256s into the formula and commit straight from the tap clone
+      # brew just modified — no second checkout, no cp between clones.
+      - name: Merge bottle block and commit to the tap
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          jsons=$(find bottles -name '*.bottle.json' | sort)
+          jsons=$(find "$(pwd)/bottles" -name '*.bottle.json' | sort)
           if [ -z "$jsons" ]; then
             echo "::error::No .bottle.json downloaded from the ${FORMULA}-${VERSION} release."
             exit 1
@@ -149,12 +150,12 @@ jobs:
           # Fold every platform's sha256 into the formula's `bottle do` block.
           # shellcheck disable=SC2086  # word-split $jsons into multiple path args.
           brew bottle --merge --write --no-commit $jsons
-      - name: Commit merged bottle block
-        run: |
-          set -euo pipefail
-          f="$(brew --repository Funput/tap)/Formula/${FORMULA}.rb"
-          cp "$f" "Formula/${FORMULA}.rb"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "funput ${VERSION}: add bottles" || echo "no changes"
-          git push
+
+          tap="$(brew --repository Funput/tap)"
+          git -C "$tap" config user.name "github-actions[bot]"
+          git -C "$tap" config user.email "github-actions[bot]@users.noreply.github.com"
+          git -C "$tap" remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git -C "$tap" commit -am "funput ${VERSION}: add bottles" \
+            || { echo "no changes to commit"; exit 0; }
+          git -C "$tap" push origin HEAD:main
