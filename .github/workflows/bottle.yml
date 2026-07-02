@@ -123,26 +123,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+      # Each artifact lands in its own subdir (bottles/bottle-json-<os>/…); we locate
+      # the JSONs with `find`, which is robust to whatever layout download produces.
       - uses: actions/download-artifact@v4
         with:
           pattern: bottle-json-*
-          merge-multiple: true
           path: bottles
       - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap + merge bottle blocks
         run: |
           set -euo pipefail
-          if ! ls bottles/*.bottle.json >/dev/null 2>&1; then
-            echo "::error::No bottle-json-* artifacts were downloaded. Re-run the WHOLE" \
-                 "workflow (not just this job) so the build jobs upload their .bottle.json."
+          echo "Artifact tree:"; find bottles | sort || true
+          jsons=$(find bottles -name '*.bottle.json' | sort)
+          if [ -z "$jsons" ]; then
+            echo "::error::No .bottle.json found under bottles/ despite the build uploads." \
+                 "See the artifact tree above."
             exit 1
           fi
-          echo "Downloaded bottle JSONs:"; ls -l bottles
+          echo "Merging:"; echo "$jsons"
           brew update
           brew tap Funput/tap "https://github.com/${{ github.repository }}"
           brew update-reset "$(brew --repository Funput/tap)"
           # Fold every platform's sha256 into the formula's `bottle do` block.
-          brew bottle --merge --write --no-commit bottles/*.bottle.json
+          # shellcheck disable=SC2086  # word-split $jsons into multiple path args.
+          brew bottle --merge --write --no-commit $jsons
       - name: Commit merged bottle block
         run: |
           set -euo pipefail
