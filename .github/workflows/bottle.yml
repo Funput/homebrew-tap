@@ -32,7 +32,7 @@ jobs:
     outputs:
       release_tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Bump url + sha256 to v${{ env.VERSION }}
         run: |
           set -euo pipefail
@@ -109,7 +109,7 @@ jobs:
           gh release upload "${FORMULA}-${VERSION}" dist/*.bottle.tar.gz --clobber --repo "${{ github.repository }}"
 
       - name: Stash the bottle JSON for the merge step
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bottle-json-${{ matrix.os }}
           path: dist/*.bottle.json
@@ -120,14 +120,20 @@ jobs:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: main
-      # Each artifact lands in its own subdir (bottles/bottle-json-<os>/…); we locate
-      # the JSONs with `find`, which is robust to whatever layout download produces.
-      - uses: actions/download-artifact@v4
+      # Download each build's artifact by its exact name (the matrix is fixed, so
+      # the names are deterministic). `pattern`-based download proved unreliable —
+      # it silently matched nothing. Both extract into bottles/; their JSONs carry
+      # distinct bottle-tag names, so there is no collision.
+      - uses: actions/download-artifact@v5
         with:
-          pattern: bottle-json-*
+          name: bottle-json-macos-14
+          path: bottles
+      - uses: actions/download-artifact@v5
+        with:
+          name: bottle-json-ubuntu-latest
           path: bottles
       - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap + merge bottle blocks
