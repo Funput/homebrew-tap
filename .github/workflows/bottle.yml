@@ -132,6 +132,11 @@ jobs:
       - name: Tap + merge bottle blocks
         run: |
           set -euo pipefail
+          if ! ls bottles/*.bottle.json >/dev/null 2>&1; then
+            echo "::error::No bottle-json-* artifacts were downloaded. Re-run the WHOLE" \
+                 "workflow (not just this job) so the build jobs upload their .bottle.json."
+            exit 1
+          fi
           echo "Downloaded bottle JSONs:"; ls -l bottles
           brew update
           brew tap Funput/tap "https://github.com/${{ github.repository }}"
