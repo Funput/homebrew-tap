@@ -94,21 +94,26 @@ jobs:
           brew bottle --json --no-rebuild \
             --root-url "https://github.com/Funput/homebrew-tap/releases/download/${FORMULA}-${VERSION}" \
             "Funput/tap/${FORMULA}"
-          # `brew bottle` writes files like funput--<ver>.<tag>.bottle.tar.gz next to CWD.
-          ls -1 *.bottle.*
+          # `brew bottle` writes funput--<ver>.<tag>.bottle.tar.gz + .bottle.json into
+          # CWD. Collect both into dist/ — the `mv` fails the job (set -e) if either
+          # is missing, surfacing the problem here instead of an empty artifact.
+          mkdir -p dist
+          mv ./*.bottle.tar.gz ./*.bottle.json dist/
+          echo "Produced:"; ls -l dist
 
       - name: Upload bottle tarball to the Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "${FORMULA}-${VERSION}" *.bottle.tar.gz --clobber --repo "${{ github.repository }}"
+          gh release upload "${FORMULA}-${VERSION}" dist/*.bottle.tar.gz --clobber --repo "${{ github.repository }}"
 
       - name: Stash the bottle JSON for the merge step
         uses: actions/upload-artifact@v4
         with:
           name: bottle-json-${{ matrix.os }}
-          path: "*.bottle.json"
+          path: dist/*.bottle.json
+          if-no-files-found: error
 
   # ---- Merge the per-arch checksums into the formula ------------------------
   merge:
@@ -122,15 +127,17 @@ jobs:
         with:
           pattern: bottle-json-*
           merge-multiple: true
+          path: bottles
       - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap + merge bottle blocks
         run: |
           set -euo pipefail
+          echo "Downloaded bottle JSONs:"; ls -l bottles
           brew update
           brew tap Funput/tap "https://github.com/${{ github.repository }}"
           brew update-reset "$(brew --repository Funput/tap)"
-          # Fold every arch's sha256 into the formula's `bottle do` block.
-          brew bottle --merge --write --no-commit *.bottle.json
+          # Fold every platform's sha256 into the formula's `bottle do` block.
+          brew bottle --merge --write --no-commit bottles/*.bottle.json
       - name: Commit merged bottle block
         run: |
           set -euo pipefail
