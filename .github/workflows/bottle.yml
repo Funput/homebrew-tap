@@ -127,36 +127,49 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: Homebrew/actions/setup-homebrew@master
-      # Fetch every platform's bottle JSON straight from the Release the build jobs
-      # uploaded them to — no cross-job artifact passing involved.
-      - name: Download bottle JSONs from the Release
+      # Tap + merge + commit in ONE step. Order matters: refresh the tap clone
+      # FIRST, then download the bottle JSONs, then merge — with nothing in
+      # between. Previously the JSONs were downloaded and `find`-listed, and only
+      # then did `brew update`/`brew update-reset` run before `brew bottle
+      # --merge` read them; that left a window where the files `find` had listed
+      # were gone by the time brew opened them, so `brew bottle --merge` died with
+      # `No such file or directory @ rb_sysopen - .../bottles/funput--<ver>.<tag>.bottle.json`
+      # (the very first thing merge does is File.read every JSON arg).
+      - name: Merge bottle blocks and commit to the tap
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p bottles
+          # Refresh Homebrew + the tap clone we are about to edit, before any
+          # bottle JSON is written into the workspace.
+          brew update
+          brew tap Funput/tap "https://github.com/${{ github.repository }}"
+          brew update-reset "$(brew --repository Funput/tap)"
+
+          # Now pull every platform's bottle JSON straight from the Release the
+          # build jobs uploaded to — no cross-job artifact passing involved — and
+          # merge immediately, so nothing runs between writing and reading them.
+          rm -rf bottles && mkdir -p bottles
           gh release download "${FORMULA}-${VERSION}" \
             --pattern '*.bottle.json' --dir bottles --repo "${{ github.repository }}"
           echo "Downloaded:"; ls -l bottles
-      # Merge the sha256s into the formula and commit straight from the tap clone
-      # brew just modified — no second checkout, no cp between clones.
-      - name: Merge bottle block and commit to the tap
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
+
           jsons=$(find "$(pwd)/bottles" -name '*.bottle.json' | sort)
           if [ -z "$jsons" ]; then
             echo "::error::No .bottle.json downloaded from the ${FORMULA}-${VERSION} release."
             exit 1
           fi
           echo "Merging:"; echo "$jsons"
-          brew update
-          brew tap Funput/tap "https://github.com/${{ github.repository }}"
-          brew update-reset "$(brew --repository Funput/tap)"
+
           # Fold every platform's sha256 into the formula's `bottle do` block.
+          # --no-all-checks keeps the per-arch bottles separate instead of trying
+          # to collapse them into one `all:` bottle. That collapse path would
+          # `FileUtils.cp` the local double-dash tarball (which the build job
+          # renamed to single-dash before upload and which we never download
+          # here), so it must be disabled — our arches carry distinct sha256s
+          # anyway, so nothing is lost.
           # shellcheck disable=SC2086  # word-split $jsons into multiple path args.
-          brew bottle --merge --write --no-commit $jsons
+          brew bottle --merge --write --no-commit --no-all-checks $jsons
 
           tap="$(brew --repository Funput/tap)"
           git -C "$tap" config user.name "github-actions[bot]"
