@@ -5,8 +5,8 @@ class Funput < Formula
   # .github/workflows/bottle.yml on each upstream release. The tarball is the
   # `app/` git repo (github.com/Funput/Funput), so the workspace root is the
   # tarball root and the umbrella binary lives in crates/funput-cli (bin: funput).
-  url "https://github.com/Funput/Funput/archive/refs/tags/v1.2026.59.tar.gz"
-  sha256 "32be7335411b7961e857363ad3b8863348a37ffe23d54614690079e20c69192a"
+  url "https://github.com/Funput/Funput/archive/refs/tags/v1.2026.60.tar.gz"
+  sha256 "a6520c62068e977e44cf98cd98d621b0b7df2e98d7f8cc0a819a6e2c7b758f1a"
   license "MIT"
   head "https://github.com/Funput/Funput.git", branch: "main"
 
@@ -17,7 +17,7 @@ class Funput < Formula
   # (that is what `depends_on "rust" => :build` is for), so the tap works from day
   # one even before bottle CI has published for every platform.
   bottle do
-    root_url "https://github.com/Funput/homebrew-tap/releases/download/funput-1.2026.59"
+    root_url "https://github.com/Funput/homebrew-tap/releases/download/funput-1.2026.60"
     sha256 cellar: :any_skip_relocation, arm64_sonoma: "6ef9c007d1e1092267161c8eba1c3074638ce26bf70b197c8d0e26c8c63266a9"
     sha256 cellar: :any,                 x86_64_linux: "b75208cbedf891901d5d9bff7b93e88704112456c7619c9de180a5a3d2865d78"
   end
