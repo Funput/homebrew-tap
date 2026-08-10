@@ -18,8 +18,8 @@ class Funput < Formula
   # one even before bottle CI has published for every platform.
   bottle do
     root_url "https://github.com/Funput/homebrew-tap/releases/download/funput-1.2026.65"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "13298274e30ce2765c239f93150e15cc88673cf15e853ccd7cef0839737c545a"
-    sha256 cellar: :any,                 x86_64_linux: "c2844c798c3e93cddc1aedf313990ece3c0bc2d92b85304e49bc89c7c2032bff"
+    sha256 cellar: :any_skip_relocation, arm64_sonoma: "79a175627504762d592ee65ebae8c85e4e77714d948ff568234a685097112d8a"
+    sha256 cellar: :any,                 x86_64_linux: "158aba5fd1e444eb1f61f83ae7ec20fca58ef33dce1a0262215d6bdb451b012a"
   end
 
   def install
