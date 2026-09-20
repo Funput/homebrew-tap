@@ -78,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       # macOS runners ship Homebrew on PATH; Linux runners do not, so install it.
-      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
       - name: Tap this repository
         run: |
           set -euo pipefail
@@ -126,7 +126,7 @@ jobs:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
       # Tap + merge + commit in ONE step. Order matters: refresh the tap clone
       # FIRST, then download the bottle JSONs, then merge — with nothing in
       # between. Previously the JSONs were downloaded and `find`-listed, and only
